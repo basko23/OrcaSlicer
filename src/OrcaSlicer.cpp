@@ -1,5 +1,4 @@
-// TEST 222
-
+// TEST 222ывы
 #ifdef WIN32
     // Why?
     #define _WIN32_WINNT 0x0502
