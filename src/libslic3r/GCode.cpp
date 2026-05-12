@@ -5334,10 +5334,6 @@ LayerResult GCode::process_layer(
                     gcode += this->extrude_infill(print,by_region_specific, true);
                 }
 
-                // Deferred_tie_perimeters — printed at the end of the object, after all islands.
-                if (const Layer* obj_layer = layer_to_print.object_layer)
-                    gcode += this->extrude_deferred_perimeters(*obj_layer);
-
                 if (this->config().gcode_label_objects) {
                     gcode += std::string("; stop printing object ") +
                              instance_to_print.print_object.model_object()->name +
@@ -6033,21 +6029,6 @@ std::string GCode::extrude_infill(const Print &print, const std::vector<ObjectBy
                 }
             }
         }
-    return gcode;
-}
-
-std::string GCode::extrude_deferred_perimeters(const Layer& layer)
-{
-    std::string gcode;
-    for (const LayerRegion* region : layer.regions()) {
-        if (region->deffered_tie_perimeters.entities.empty())
-            continue;
-        for (int i = region->deffered_tie_perimeters.entities.size() - 1; i >= 0; --i) {
-            const auto* eec = static_cast<const ExtrusionEntityCollection*>(region->deffered_tie_perimeters.entities[i]);
-            for (ExtrusionEntity* inner : eec->chained_path_from(m_last_pos.to_point()).entities)
-                gcode += this->extrude_entity(*inner, "perimeter");
-        }
-    }
     return gcode;
 }
 

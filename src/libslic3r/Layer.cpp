@@ -203,14 +203,13 @@ void Layer::make_perimeters()
 		            LayerRegion* other_layerm = *it;
 		            const PrintRegion &other_region = other_layerm->region();
                     if (is_perimeter_compatible(this_region, other_region))
-					{
-						other_layerm->perimeters.clear();
-						other_layerm->fills.clear();
-						other_layerm->thin_fills.clear();
-                        other_layerm->deffered_tie_perimeters.clear();
-						layerms.push_back(other_layerm);
-						done[it - m_regions.begin()] = true;
-					}
+		            {
+			 			other_layerm->perimeters.clear();
+			 			other_layerm->fills.clear();
+			 			other_layerm->thin_fills.clear();
+		                layerms.push_back(other_layerm);
+		                done[it - m_regions.begin()] = true;
+		            }
 		        }
 
 	        if (layerms.size() == 1) {  // optimization

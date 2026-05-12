@@ -256,8 +256,8 @@ CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(WallInfillOrder)
 static t_config_enum_values s_keys_map_WallSequence {
     { "inner wall/outer wall",     int(WallSequence::InnerOuter) },
     { "outer wall/inner wall",     int(WallSequence::OuterInner) },
-    { "inner-outer-inner wall",    int(WallSequence::InnerOuterInner)},
-    { "inner-outer-deferred-tie wall", int(WallSequence::InnerOuterDeferredTie)}
+    { "inner-outer-inner wall",    int(WallSequence::InnerOuterInner)}
+
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(WallSequence)
 
@@ -2041,22 +2041,14 @@ void PrintConfigDef::init_fff_params()
                      "then the external perimeter and, finally, the first internal perimeter. "
                      "This option is recommended against the Outer/Inner option in most cases.\n\n"
                      "Use Outer/Inner for the same external wall quality and dimensional accuracy benefits of Inner/Outer/Inner option. "
-                     "However, the Z seams will appear less consistent as the first extrusion of a new layer starts on a visible surface.\n\n"
-                     "Use Inner/Outer/DeferredTie for minimal shrinkage transfer to outer wall."
-                     "Within each layer the order is: ALL(outer walls → inner walls → infill) of object → ALL(tie walls) of object"
-                     "Printing tie walls after ALL(outer walls → inner walls → infill) allows the outer wall to better cool and stabilize. "
-                     "This significantly reduces the Transfer Factor (shrinkage stress transmission) from internal structures to the outer wall, "
-                     "while the tie wall printed last securely locks everything together with minimal deformation of the external surface.");
-
+                     "However, the Z seams will appear less consistent as the first extrusion of a new layer starts on a visible surface.");
     def->enum_keys_map = &ConfigOptionEnum<WallSequence>::get_enum_values();
     def->enum_values.push_back("inner wall/outer wall");
     def->enum_values.push_back("outer wall/inner wall");
     def->enum_values.push_back("inner-outer-inner wall");
-    def->enum_values.push_back("inner-outer-deferred-tie wall");
     def->enum_labels.push_back(L("Inner/Outer"));
     def->enum_labels.push_back(L("Outer/Inner"));
     def->enum_labels.push_back(L("Inner/Outer/Inner"));
-    def->enum_labels.push_back(L("Inner/Outer/DeferredTie"));
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<WallSequence>(WallSequence::InnerOuter));
 

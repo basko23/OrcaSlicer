@@ -91,10 +91,6 @@ public:
     // Outputs:
     ExtrusionEntityCollection   *loops;
     ExtrusionEntityCollection   *gap_fill;
-
-    // Deferred tie perimeters for InnerOuterDeferredTie sequence.
-    ExtrusionEntityCollection   *deffered_tie_perimeters;
-
     SurfaceCollection           *fill_surfaces;
     //BBS
     ExPolygons                  *fill_no_overlap;
@@ -121,12 +117,10 @@ public:
         const PrintConfig*          print_config,
         const bool                  spiral_mode,
         // Output:
-         // Loops with the external thin walls
+        // Loops with the external thin walls
         ExtrusionEntityCollection*  loops,
         // Gaps without the thin walls
         ExtrusionEntityCollection*  gap_fill,
-        // Deferred tie perimeters for InnerOuterDeferredTie sequence.
-        ExtrusionEntityCollection*  deffered_tie_perimeters,
         // Infills without the gap fills
         SurfaceCollection*          fill_surfaces,
         //BBS
@@ -137,7 +131,7 @@ public:
             config(config), object_config(object_config), print_config(print_config),
             m_spiral_vase(spiral_mode),
             m_scaled_resolution(scaled<double>(print_config->resolution.value > EPSILON ? print_config->resolution.value : EPSILON)),
-            loops(loops), gap_fill(gap_fill), deffered_tie_perimeters(deffered_tie_perimeters), fill_surfaces(fill_surfaces), fill_no_overlap(fill_no_overlap),
+            loops(loops), gap_fill(gap_fill), fill_surfaces(fill_surfaces), fill_no_overlap(fill_no_overlap),
             m_ext_mm3_per_mm(-1), m_mm3_per_mm(-1), m_mm3_per_mm_overhang(-1), m_ext_mm3_per_mm_smaller_width(-1)
         {}
 

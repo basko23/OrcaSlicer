@@ -121,7 +121,6 @@ enum class WallSequence {
     InnerOuter,
     OuterInner,
     InnerOuterInner,
-    InnerOuterDeferredTie,
     Count,
 };
 
