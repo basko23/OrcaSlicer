@@ -94,10 +94,11 @@ void LayerRegion::make_perimeters(const SurfaceCollection &slices, const LayerRe
         &this->layer()->object()->config(),
         &print_config,
         spiral_mode,
-        
+
         // output:
         &this->perimeters,
         &this->thin_fills,
+        &this->deffered_tie_perimeters,
         fill_surfaces,
         //BBS
         fill_no_overlap

@@ -1145,6 +1145,10 @@ void PerimeterGenerator::process_classic()
 {
     group_region_by_fuzzify(*this);
 
+    // Clear deffered tie perimeters for this layer
+    if (this->deffered_tie_perimeters != nullptr)
+        this->deffered_tie_perimeters->clear();
+
     // other perimeters
     m_mm3_per_mm               		= this->perimeter_flow.mm3_per_mm();
     coord_t perimeter_width         = this->perimeter_flow.scaled_width();
@@ -1562,8 +1566,78 @@ void PerimeterGenerator::process_classic()
                         position = arr_i + 1;
                     }
                 }
+            } 
+            // InnerOuterDeferredTie wall sequence. Apply after 1st layer.
+            else if (this->config->wall_sequence == WallSequence::InnerOuterDeferredTie && layer_id > 0) {
+                entities.reverse();
+
+                if (entities.entities.size() > 1) {
+                    ExtrusionEntityCollection reordered;
+                    size_t position = 0;
+                    auto& src       = entities.entities;
+
+                    while (position < src.size()) {
+                        int outer_idx  = -1;
+                        int idx1       = -1;
+                        int idx2       = -1;
+                        int island_end = -1;
+
+                        // Pass 1: Find the outer boundary and the island's boundary
+                        for (size_t i = position; i < src.size(); ++i) {
+                            if (src[i]->inset_idx == 0 && outer_idx == -1)
+                                outer_idx = (int) i;
+                            if (src[i]->inset_idx == 0 && (int) i > (int) position) {
+                                island_end = (int) i - 1;
+                                break;
+                            }
+                        }
+                        if (island_end == -1)
+                            island_end = (int) src.size() - 1;
+
+                        // Pass 2: Find inset=1 and inset=2 strictly within the island
+                        for (int i = (int) position; i <= island_end; ++i) {
+                            if (src[i]->inset_idx == 2 && idx2 == -1)
+                                idx2 = i;
+                            if (src[i]->inset_idx == 1 && idx1 == -1)
+                                idx1 = i;
+                        }
+
+                        // Assemble: inset=2 → inset=0 → inset>=3 → inset=1 (last)
+                        if (idx2 != -1)
+                            reordered.append(*src[idx2]);
+                        if (outer_idx != -1)
+                            reordered.append(*src[outer_idx]);
+                        for (int i = (int) position; i <= island_end; ++i) {
+                            if (i == outer_idx || i == idx2 || i == idx1)
+                                continue;
+                            if (src[i]->inset_idx >= 3)
+                                reordered.append(*src[i]);
+                        }
+                        if (idx1 != -1)
+                            reordered.append(*src[idx1]);
+
+                        position = island_end + 1;
+                    }
+
+                    entities.clear();
+
+                    // Separate: inset=1 at the end of each island
+                    ExtrusionEntityCollection main_extrusions;
+                    ExtrusionEntityCollection deferred_tie_walls;
+                    for (auto* entity : reordered.entities) {
+                        if (entity->inset_idx == 1)
+                            deferred_tie_walls.append(*entity);
+                        else
+                            main_extrusions.append(*entity);
+                    }
+
+                    entities.append(main_extrusions.entities);
+
+                    if (!deferred_tie_walls.entities.empty() && this->deffered_tie_perimeters)
+                        this->deffered_tie_perimeters->append(deferred_tie_walls);
+                }
             }
-            
+
             // append perimeters for this slice as a collection
             if (! entities.empty())
                 this->loops->append(entities);
@@ -2126,6 +2200,10 @@ void PerimeterGenerator::process_arachne()
 {
     group_region_by_fuzzify(*this);
 
+    // Clear deffered tie perimeters for this layer
+    if (this->deffered_tie_perimeters != nullptr)
+        this->deffered_tie_perimeters->clear();
+
     // other perimeters
     m_mm3_per_mm = this->perimeter_flow.mm3_per_mm();
     coord_t perimeter_spacing = this->perimeter_flow.scaled_spacing();
@@ -2304,7 +2382,8 @@ void PerimeterGenerator::process_arachne()
 
 		bool is_outer_wall_first =
             	this->config->wall_sequence == WallSequence::OuterInner ||
-            	this->config->wall_sequence == WallSequence::InnerOuterInner;
+            	this->config->wall_sequence == WallSequence::InnerOuterInner ||
+                this->config->wall_sequence == WallSequence::InnerOuterDeferredTie;
         
         if (layer_id == 0){ // disable inner outer inner algorithm after the first layer
         	is_outer_wall_first =
@@ -2492,7 +2571,101 @@ void PerimeterGenerator::process_arachne()
                 }
             }
         }
-        
+
+        // InnerOuterDeferredTie wall sequence (Arachne). Apply after 1st layer.
+        if (this->config->wall_sequence == WallSequence::InnerOuterDeferredTie && layer_id > 0) {
+            if (ordered_extrusions.size() > 1) {
+                bringContoursToFront(ordered_extrusions);
+
+                coord_t threshold_external = (apply_precise_outer_wall) ?
+                                                 (this->ext_perimeter_flow.scaled_spacing() + this->perimeter_flow.scaled_spacing() / 2.0) :
+                                                 (this->ext_perimeter_flow.scaled_spacing() / 2.0 +
+                                                  this->perimeter_flow.scaled_spacing() / 2.0);
+                coord_t threshold_internal = this->perimeter_flow.scaled_spacing();
+
+                // Proximity reordering with inset=1: the 0→1→2 sequence is preserved,
+                // and the islands are grouped correctly
+                ordered_extrusions = reorderPerimetersByProximity(ordered_extrusions, threshold_external, threshold_internal);
+
+                // Reorder each island: inset=2 → inset=0 → inset>=3 → inset=1
+                // (set inset=1 at the end of the island so it can be easily collected for collection)
+                std::vector<PerimeterGeneratorArachneExtrusion> reordered = ordered_extrusions;
+                size_t position                                           = 0;
+
+                while (position < reordered.size()) {
+                    int outer         = -1;
+                    int idx1          = -1;
+                    int idx2          = -1;
+                    size_t island_end = reordered.size() - 1;
+
+                    // Find the island's boundary using the following inset=0
+                    for (size_t i = position; i < reordered.size(); ++i) {
+                        if (reordered[i].extrusion->inset_idx == 0) {
+                            if (outer == -1)
+                                outer = (int) i;
+                            else {
+                                island_end = i - 1;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Find inset=1 and inset=2 strictly within the island
+                    for (size_t i = position; i <= island_end; ++i) {
+                        if (reordered[i].extrusion->inset_idx == 2 && idx2 == -1)
+                            idx2 = (int) i;
+                        if (reordered[i].extrusion->inset_idx == 1 && idx1 == -1)
+                            idx1 = (int) i;
+                    }
+
+                    // Assemble: inset=2 → inset=0 → inset>=3 → inset=1 (last)
+                    std::vector<PerimeterGeneratorArachneExtrusion> island;
+                    island.reserve(island_end - position + 1);
+
+                    if (idx2 != -1)
+                        island.push_back(reordered[idx2]);
+                    if (outer != -1)
+                        island.push_back(reordered[outer]);
+                    for (size_t i = position; i <= island_end; ++i) {
+                        if ((int) i == outer || (int) i == idx2 || (int) i == idx1)
+                            continue;
+                        island.push_back(reordered[i]); // inset>=3
+                    }
+                    if (idx1 != -1)
+                        island.push_back(reordered[idx1]); // tie wall last
+
+                    for (size_t i = 0; i < island.size(); ++i)
+                        ordered_extrusions[position + i] = island[i];
+
+                    position = island_end + 1;
+                }
+            }
+
+            // Separate: inset=1 at the end of each island
+            std::vector<PerimeterGeneratorArachneExtrusion> main_extrusions;
+            std::vector<PerimeterGeneratorArachneExtrusion> deferred_tie;
+            for (auto& pe : ordered_extrusions) {
+                if (pe.extrusion->inset_idx == 1)
+                    deferred_tie.push_back(std::move(pe));
+                else
+                    main_extrusions.push_back(std::move(pe));
+            }
+            ordered_extrusions = std::move(main_extrusions);
+
+            // Collect deferred tie walls
+            if (!deferred_tie.empty()) {
+                bool tie_steep_contour = false;
+                bool tie_steep_hole    = false;
+                if (ExtrusionEntityCollection tie_coll = traverse_extrusions(*this, deferred_tie, tie_steep_contour, tie_steep_hole);
+                    !tie_coll.empty()) {
+                    if (config->overhang_reverse)
+                        reorient_perimeters(tie_coll, tie_steep_contour, tie_steep_hole, this->config->overhang_reverse_internal_only);
+                    if (this->deffered_tie_perimeters)
+                        this->deffered_tie_perimeters->append(tie_coll);
+                }
+            }
+        }
+
         bool steep_overhang_contour = false;
         bool steep_overhang_hole    = false;
         if (!config->overhang_reverse) {

@@ -67,6 +67,9 @@ public:
     // collection of polylines representing the unsupported bridge edges
     Polylines          			unsupported_bridge_edges;
 
+    // Deffered_tie_perimeters for InnerOuterDeferredTie sequence.
+    ExtrusionEntityCollection deffered_tie_perimeters;
+
     // ordered collection of extrusion paths/loops to build all perimeters
     // (this collection contains only ExtrusionEntityCollection objects)
     ExtrusionEntityCollection   perimeters;
