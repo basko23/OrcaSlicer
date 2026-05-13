@@ -71,6 +71,9 @@ struct CoolingLine
         // ORCA: Add support for ironing fan speed control
         TYPE_IRONING_FAN_START         = 1 << 19,
         TYPE_IRONING_FAN_END           = 1 << 20,
+        // Disable fan during deferred tie walls (InnerOuterDeferredTie sequence)
+        TYPE_TIE_WALL_FAN_START        = 1 << 21,
+        TYPE_TIE_WALL_FAN_END          = 1 << 22,
     };
 
     CoolingLine(unsigned int type, size_t  line_start, size_t  line_end) :
@@ -531,6 +534,10 @@ std::vector<PerExtruderAdjustments> CoolingBuffer::parse_layer_gcode(const std::
             line.type = CoolingLine::TYPE_IRONING_FAN_START;
         } else if (boost::starts_with(sline, ";_IRONING_FAN_END")) { // ORCA: Add support for ironing fan speed control
             line.type = CoolingLine::TYPE_IRONING_FAN_END;
+        } else if (boost::starts_with(sline, ";_TIE_WALL_FAN_START")) {
+            line.type = CoolingLine::TYPE_TIE_WALL_FAN_START;
+        } else if (boost::starts_with(sline, ";_TIE_WALL_FAN_END")) {
+            line.type = CoolingLine::TYPE_TIE_WALL_FAN_END;
         } else if (boost::starts_with(sline, "G4 ")) {
             // Parse the wait time.
             line.type = CoolingLine::TYPE_G4;
@@ -826,6 +833,7 @@ std::string CoolingBuffer::apply_layer_cooldown(
                                                                {CoolingLine::TYPE_INTERNAL_BRIDGE_FAN_START, false}, // ORCA: Add support for separate internal bridge fan speed control
                                                                {CoolingLine::TYPE_SUPPORT_INTERFACE_FAN_START, false},
                                                                {CoolingLine::TYPE_IRONING_FAN_START, false}, // ORCA: Add support for ironing fan speed control
+                                                               {CoolingLine::TYPE_TIE_WALL_FAN_START, false},
                                                                {CoolingLine::TYPE_FORCE_RESUME_FAN, false}};
     bool need_set_fan = false;
 
@@ -884,6 +892,16 @@ std::string CoolingBuffer::apply_layer_cooldown(
                 fan_speed_change_requests[CoolingLine::TYPE_IRONING_FAN_START] = false;
             }
             need_set_fan = true;
+        } else if (line->type & CoolingLine::TYPE_TIE_WALL_FAN_START) {
+            if (!fan_speed_change_requests[CoolingLine::TYPE_TIE_WALL_FAN_START]) {
+                fan_speed_change_requests[CoolingLine::TYPE_TIE_WALL_FAN_START] = true;
+                need_set_fan = true;
+            }
+        } else if (line->type & CoolingLine::TYPE_TIE_WALL_FAN_END) {
+            if (fan_speed_change_requests[CoolingLine::TYPE_TIE_WALL_FAN_START]) {
+                fan_speed_change_requests[CoolingLine::TYPE_TIE_WALL_FAN_START] = false;
+                need_set_fan = true;
+            }
         } else if (line->type & CoolingLine::TYPE_FORCE_RESUME_FAN) {
             // check if any fan speed change request is active
             if (m_fan_speed != -1 && !std::any_of(fan_speed_change_requests.begin(), fan_speed_change_requests.end(), [](const std::pair<int, bool>& p) { return p.second; })){
@@ -979,7 +997,13 @@ std::string CoolingBuffer::apply_layer_cooldown(
         }
 
         if (need_set_fan) {
-            if (fan_speed_change_requests[CoolingLine::TYPE_OVERHANG_FAN_START]){
+            if (fan_speed_change_requests[CoolingLine::TYPE_TIE_WALL_FAN_START]) {
+                // Tie wall fan disable: turn fan completely off.
+                // m_current_fan_speed already holds the layer's fan speed,
+                // so when TYPE_TIE_WALL_FAN_END fires it will be restored via m_fan_speed.
+                new_gcode += GCodeWriter::set_fan(m_config.gcode_flavor, 0);
+                m_current_fan_speed = 0;
+            } else if (fan_speed_change_requests[CoolingLine::TYPE_OVERHANG_FAN_START]){
                 new_gcode += GCodeWriter::set_fan(m_config.gcode_flavor, overhang_fan_speed);
                 m_current_fan_speed = overhang_fan_speed;
             } else if (fan_speed_change_requests[CoolingLine::TYPE_INTERNAL_BRIDGE_FAN_START]){ // ORCA: Add support for separate internal bridge fan speed control
@@ -999,6 +1023,8 @@ std::string CoolingBuffer::apply_layer_cooldown(
                 fan_speed_change_requests[CoolingLine::TYPE_FORCE_RESUME_FAN] = false;
             }
             else
+                // This branch also handles TYPE_TIE_WALL_FAN_END (flag was cleared above),
+                // restoring the fan to the layer's calculated speed.
                 new_gcode += GCodeWriter::set_fan(m_config.gcode_flavor, m_fan_speed);
             need_set_fan = false;
         }

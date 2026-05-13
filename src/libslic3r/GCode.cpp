@@ -6042,11 +6042,22 @@ std::string GCode::extrude_deferred_perimeters(const Layer& layer)
     for (const LayerRegion* region : layer.regions()) {
         if (region->deffered_tie_perimeters.entities.empty())
             continue;
+
+        // Check if fan should be disabled for tie walls in this region
+        const bool disable_fan = m_enable_cooling_markers &&
+                                 region->region().config().disable_fan_for_deferred_tie_walls;
+
+        if (disable_fan)
+            gcode += ";_TIE_WALL_FAN_START\n";
+
         for (int i = region->deffered_tie_perimeters.entities.size() - 1; i >= 0; --i) {
             const auto* eec = static_cast<const ExtrusionEntityCollection*>(region->deffered_tie_perimeters.entities[i]);
             for (ExtrusionEntity* inner : eec->chained_path_from(m_last_pos.to_point()).entities)
                 gcode += this->extrude_entity(*inner, "perimeter");
         }
+
+        if (disable_fan)
+            gcode += ";_TIE_WALL_FAN_END\n";
     }
     return gcode;
 }

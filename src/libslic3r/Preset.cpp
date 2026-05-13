@@ -1026,6 +1026,7 @@ static std::vector<std::string> s_Preset_print_options{
     "skin_infill_density",
     "align_infill_direction_to_model",
     "extra_solid_infills",
+    "disable_fan_for_deferred_tie_walls", 
     "minimum_sparse_infill_area",
     "reduce_infill_retraction",
     "internal_solid_infill_pattern",
